@@ -231,6 +231,23 @@
     .btn-undo    { background: linear-gradient(135deg, #6c63ff, #a855f7); color: #fff; }
     .btn-restart { background: linear-gradient(135deg, #f5576c, #e4338a); color: #fff; }
     .btn-new     { background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }
+    .btn-hint    { background: linear-gradient(135deg, #f7971e, #ffd200); color: #1a1400; }
+
+    /* ── Hint tube highlight ── */
+    @keyframes pulseFrom {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(255,210,0,.35)); }
+      50%       { filter: drop-shadow(0 0 24px rgba(255,210,0,.95)); }
+    }
+    @keyframes pulseTo {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(60,220,100,.35)); }
+      50%       { filter: drop-shadow(0 0 24px rgba(60,220,100,.95)); }
+    }
+    .tube-wrap.hint-from { animation: pulseFrom 1s ease-in-out infinite; }
+    .tube-wrap.hint-from .tube     { border-color: rgba(255,200,0,.85); }
+    .tube-wrap.hint-from .tube-rim { background: linear-gradient(to bottom,#ffe04a,#c89800); box-shadow: 0 -4px 12px rgba(255,180,0,.55); }
+    .tube-wrap.hint-to   { animation: pulseTo   1s ease-in-out infinite; }
+    .tube-wrap.hint-to   .tube     { border-color: rgba(60,220,100,.85); }
+    .tube-wrap.hint-to   .tube-rim { background: linear-gradient(to bottom,#80ffb4,#00aa52); box-shadow: 0 -4px 12px rgba(0,200,80,.55); }
 
     /* ── Toast ── */
     .toast {
@@ -351,6 +368,7 @@
 
 <div class="controls">
   <button class="btn-undo"    id="btn-undo"    onclick="undo()">↩ Undo</button>
+  <button class="btn-hint"    id="btn-hint"    onclick="showHint()">💡 Hint</button>
   <button class="btn-restart"                  onclick="restart()">↺ Restart</button>
   <button class="btn-new"                      onclick="newGame()">✦ New Game</button>
 </div>
@@ -424,6 +442,7 @@
   let moves = 0;
   let history = [];       // stack of [tubes snapshot, selected]
   let justPlaced = null;  // tube index that just received a ball
+  let hintMove   = null;  // { from, to } or null
 
   // ─── Difficulty ──────────────────────────────────────────────────────────
   function setDiff(d) {
@@ -555,20 +574,22 @@
     updateLayout();
     tubes = generatePuzzle();
     initialTubes = tubes.map(t => [...t]);
-    selected = null;
-    moves = 0;
-    history = [];
+    selected  = null;
+    moves     = 0;
+    history   = [];
     justPlaced = null;
+    hintMove   = null;
     render();
     updateStats();
   }
 
   function restart() {
     tubes = initialTubes.map(t => [...t]);
-    selected = null;
-    moves = 0;
-    history = [];
+    selected  = null;
+    moves     = 0;
+    history   = [];
     justPlaced = null;
+    hintMove   = null;
     render();
     updateStats();
   }
@@ -598,7 +619,8 @@
     }
     moves++;
     justPlaced = to;
-    selected = null;
+    hintMove   = null;
+    selected   = null;
   }
 
   function clickTube(idx) {
@@ -658,8 +680,128 @@
     selected = snap.selected;
     moves = snap.moves;
     justPlaced = null;
+    hintMove   = null;
     render();
     updateStats();
+  }
+
+  // ─── Hint ────────────────────────────────────────────────────────────────
+  // Maps each colour name to a single-digit index for fast state-key hashing.
+  const COLOR_IDX = Object.fromEntries(COLOR_LIST.map((c, i) => [c, i]));
+  function stateKey(s) { return s.map(t => t.map(c => COLOR_IDX[c]).join('')).join('|'); }
+
+  function showHint() {
+    if (isSolved(tubes, cfg.tubeSize, cfg.colors)) return;
+    // Toggle off if hint is already visible
+    if (hintMove) { hintMove = null; render(); return; }
+
+    const move = findBestMove(tubes, cfg.tubeSize, cfg.colors);
+    if (!move) { showToast('No moves available!'); return; }
+    hintMove = move;
+    // Clear hint automatically after the player watches it for a bit
+    render();
+  }
+
+  // BFS that returns the *first move* of a shortest solution path.
+  // Falls back to a one-step heuristic when the state space is too large.
+  function findBestMove(initState, tubeSize, numColors) {
+    const MAX_NODES = 20000;
+    const startKey = stateKey(initState);
+
+    // parent[childKey] = { parentKey, move } for path reconstruction
+    const parent = new Map();
+    parent.set(startKey, { parentKey: null, move: null });
+
+    const queue = [initState.map(t => [...t])];
+    let head = 0;
+
+    while (head < queue.length && parent.size < MAX_NODES) {
+      const cur = queue[head++];
+      const curKey = stateKey(cur);
+
+      if (isSolved(cur, tubeSize, numColors)) {
+        // Walk back up the parent chain to find the move taken from the start
+        let k = curKey;
+        while (parent.get(k).parentKey !== startKey) k = parent.get(k).parentKey;
+        return parent.get(k).move;
+      }
+
+      for (let f = 0; f < cur.length; f++) {
+        if (!cur[f].length) continue;
+        // Never move from an already-completed tube
+        if (cur[f].length === tubeSize && cur[f].every(b => b === cur[f][0])) continue;
+
+        const topColor = cur[f][cur[f].length - 1];
+        for (let t = 0; t < cur.length; t++) {
+          if (f === t || cur[t].length >= tubeSize) continue;
+          const destTop = cur[t].length ? cur[t][cur[t].length - 1] : null;
+          if (destTop !== null && destTop !== topColor) continue;
+
+          const next = cur.map(tube => [...tube]);
+          const col  = next[f][next[f].length - 1];
+          while (next[f].length && next[f][next[f].length - 1] === col && next[t].length < tubeSize) {
+            next[t].push(next[f].pop());
+          }
+          const nk = stateKey(next);
+          if (!parent.has(nk)) {
+            parent.set(nk, { parentKey: curKey, move: { from: f, to: t } });
+            queue.push(next);
+          }
+        }
+      }
+    }
+
+    // BFS hit the node limit — use a scored one-step heuristic instead
+    return bestHeuristicMove(initState, tubeSize, numColors);
+  }
+
+  // Scores every legal move and returns the highest-scoring one.
+  function bestHeuristicMove(state, tubeSize, numColors) {
+    let best = null, bestScore = -Infinity;
+
+    for (let f = 0; f < state.length; f++) {
+      if (!state[f].length) continue;
+      if (state[f].length === tubeSize && state[f].every(b => b === state[f][0])) continue;
+
+      const topColor = state[f][state[f].length - 1];
+      for (let t = 0; t < state.length; t++) {
+        if (f === t || state[t].length >= tubeSize) continue;
+        const destTop = state[t].length ? state[t][state[t].length - 1] : null;
+        if (destTop !== null && destTop !== topColor) continue;
+
+        // Simulate move
+        const nx = state.map(tube => [...tube]);
+        let moved = 0;
+        while (nx[f].length && nx[f][nx[f].length - 1] === topColor && nx[t].length < tubeSize) {
+          nx[t].push(nx[f].pop()); moved++;
+        }
+
+        let score = 0;
+        // Completing a tube is always the best possible move
+        if (nx[t].length === tubeSize && nx[t].every(b => b === nx[t][0])) score += 10000;
+        // Stacking onto an existing same-colour group is good progress
+        if (state[t].length > 0) score += 200;
+        // Emptying a tube creates a free slot (very valuable)
+        if (nx[f].length === 0) score += 600;
+        // Moving to an empty tube costs freedom (penalise)
+        if (state[t].length === 0) score -= 80;
+        // Moving a bigger group in one go is efficient
+        score += moved * 25;
+        // Bonus if the ball now uncovered in the source tube can immediately
+        // move somewhere useful (look one step ahead)
+        if (nx[f].length > 0) {
+          const under = nx[f][nx[f].length - 1];
+          for (let t2 = 0; t2 < nx.length; t2++) {
+            if (t2 === f || nx[t2].length >= tubeSize) continue;
+            const t2top = nx[t2].length ? nx[t2][nx[t2].length - 1] : null;
+            if (t2top === under) { score += 150; break; }
+          }
+        }
+
+        if (score > bestScore) { bestScore = score; best = { from: f, to: t }; }
+      }
+    }
+    return best;
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -669,7 +811,11 @@
 
     tubes.forEach((tube, idx) => {
       const wrap = document.createElement('div');
-      wrap.className = 'tube-wrap' + (selected === idx ? ' selected' : '');
+      let cls = 'tube-wrap';
+      if (selected  === idx)              cls += ' selected';
+      if (hintMove?.from === idx)         cls += ' hint-from';
+      if (hintMove?.to   === idx)         cls += ' hint-to';
+      wrap.className = cls;
       wrap.onclick = () => clickTube(idx);
 
       const rim = document.createElement('div');
@@ -691,6 +837,7 @@
     });
 
     document.getElementById('btn-undo').disabled = !history.length;
+    document.getElementById('btn-hint').disabled = isSolved(tubes, cfg.tubeSize, cfg.colors);
     justPlaced = null;
   }
 
