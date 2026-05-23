@@ -358,21 +358,18 @@
       colors: 4,
       tubeSize: 4,
       extraEmpty: 2,
-      shuffles: 60,
       bestKey: 'bsp-best-easy',
     },
     medium: {
       colors: 5,
       tubeSize: 4,
       extraEmpty: 2,
-      shuffles: 120,
       bestKey: 'bsp-best-medium',
     },
     hard: {
       colors: 6,
       tubeSize: 5,
       extraEmpty: 2,
-      shuffles: 200,
       bestKey: 'bsp-best-hard',
     },
   };
@@ -416,49 +413,33 @@
 
   // ─── Puzzle generation ───────────────────────────────────────────────────
   function generatePuzzle() {
-    const { colors, tubeSize, extraEmpty, shuffles } = cfg;
-    // Build sorted state
-    const sorted = [];
+    const { colors, tubeSize, extraEmpty } = cfg;
+
+    // Build a flat list of all balls and shuffle it randomly.
+    // Valid game moves can only place same-colour on top, so shuffling
+    // via valid moves from a sorted state can never interleave colours —
+    // we must randomise the ball arrangement directly instead.
+    const allBalls = [];
     for (let c = 0; c < colors; c++) {
-      sorted.push(Array(tubeSize).fill(COLOR_LIST[c]));
+      for (let b = 0; b < tubeSize; b++) allBalls.push(COLOR_LIST[c]);
     }
-    for (let e = 0; e < extraEmpty; e++) sorted.push([]);
-
-    // Shuffle by doing random valid reverse-moves
-    let state = sorted.map(t => [...t]);
-    let prevFrom = -1;
-    for (let i = 0; i < shuffles; i++) {
-      const moves = getAllMoves(state, tubeSize);
-      // Filter out immediately reversing the last move
-      const filtered = moves.filter(([f, t]) => !(f === prevFrom));
-      const candidates = filtered.length ? filtered : moves;
-      if (!candidates.length) break;
-      const [from, to] = candidates[Math.floor(Math.random() * candidates.length)];
-      state[to].push(state[from].pop());
-      prevFrom = to;
+    for (let i = allBalls.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allBalls[i], allBalls[j]] = [allBalls[j], allBalls[i]];
     }
 
-    // Ensure puzzle isn't trivially solved
+    // Distribute into tubes (bottom-to-top order)
+    const state = [];
+    for (let t = 0; t < colors; t++) {
+      state.push(allBalls.slice(t * tubeSize, (t + 1) * tubeSize));
+    }
+    for (let e = 0; e < extraEmpty; e++) state.push([]);
+
+    // Reject the (extremely rare) case where random distribution
+    // happens to land on an already-solved layout
     if (isSolved(state, tubeSize, colors)) return generatePuzzle();
 
     return state;
-  }
-
-  function getAllMoves(state, tubeSize) {
-    const moves = [];
-    for (let f = 0; f < state.length; f++) {
-      if (!state[f].length) continue;
-      const topColor = state[f][state[f].length - 1];
-      for (let t = 0; t < state.length; t++) {
-        if (f === t) continue;
-        if (state[t].length >= tubeSize) continue;
-        const destTop = state[t].length ? state[t][state[t].length - 1] : null;
-        if (destTop === null || destTop === topColor) {
-          moves.push([f, t]);
-        }
-      }
-    }
-    return moves;
   }
 
   function isSolved(state, tubeSize, numColors) {
