@@ -346,6 +346,20 @@
       border-color: rgba(255,180,40,.8);
       color: #ffe4a0;
     }
+    /* Diabolical gets blood-red to signal a different tier of pain */
+    .diff-btn.diabolical {
+      border-color: rgba(180,0,0,.45);
+      color: #ff7070;
+    }
+    .diff-btn.diabolical:hover {
+      background: rgba(160,0,0,.2);
+      border-color: rgba(255,40,40,.7);
+    }
+    .diff-btn.diabolical.active {
+      background: linear-gradient(135deg, rgba(140,0,0,.7), rgba(70,0,20,.7));
+      border-color: rgba(255,50,50,.9);
+      color: #ffb0b0;
+    }
   </style>
 </head>
 <body>
@@ -356,7 +370,8 @@
   <button class="diff-btn active" data-diff="easy"   onclick="setDiff('easy')">Easy</button>
   <button class="diff-btn"        data-diff="medium" onclick="setDiff('medium')">Medium</button>
   <button class="diff-btn"        data-diff="hard"   onclick="setDiff('hard')">Hard</button>
-  <button class="diff-btn expert" data-diff="expert" onclick="setDiff('expert')">Expert</button>
+  <button class="diff-btn expert"     data-diff="expert"     onclick="setDiff('expert')">Expert</button>
+  <button class="diff-btn diabolical" data-diff="diabolical" onclick="setDiff('diabolical')">Diabolical</button>
 </div>
 
 <div class="stats">
@@ -409,11 +424,19 @@
       colors: 7,
       tubeSize: 5,
       extraEmpty: 1,   // only ONE empty tube — the core difficulty spike
+      solverLimit: 80000,
       bestKey: 'bsp-best-expert',
+    },
+    diabolical: {
+      colors: 8,
+      tubeSize: 6,
+      extraEmpty: 1,   // still only ONE empty tube, but deeper and more colours
+      solverLimit: 250000,
+      bestKey: 'bsp-best-diabolical',
     },
   };
 
-  const COLOR_LIST = ['red', 'green', 'blue', 'orange', 'purple', 'pink', 'teal'];
+  const COLOR_LIST = ['red', 'green', 'blue', 'orange', 'purple', 'pink', 'teal', 'yellow'];
 
   const EXTRA_STYLES = `
     .ball.purple {
@@ -427,6 +450,10 @@
     .ball.teal {
       background: radial-gradient(circle at 38% 38%, #80ffe8 0%, #00b894 50%, #004d40 100%);
       box-shadow: 0 4px 18px rgba(0,184,148,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+    .ball.yellow {
+      background: radial-gradient(circle at 38% 38%, #ffff90 0%, #ddb800 50%, #6b5000 100%);
+      box-shadow: 0 4px 18px rgba(220,184,0,.7), inset 0 -4px 10px rgba(0,0,0,.3);
     }
   `;
   const styleEl = document.createElement('style');
@@ -504,9 +531,10 @@
     // Reject trivially solved layouts (extremely rare but possible)
     if (isSolved(state, tubeSize, colors)) return generatePuzzle();
 
-    // For expert mode (only 1 empty tube) run a fast bounded DFS to confirm
-    // the puzzle is actually solvable before handing it to the player.
-    if (extraEmpty === 1 && !isSolvable(state, tubeSize, colors)) {
+    // For levels with only 1 empty tube, run a bounded DFS to confirm the
+    // puzzle is solvable before handing it to the player.  The node budget
+    // is higher for diabolical to cope with its larger state space.
+    if (extraEmpty === 1 && !isSolvable(state, tubeSize, colors, cfg.solverLimit ?? 80000)) {
       return generatePuzzle();
     }
 
@@ -514,14 +542,13 @@
   }
 
   // Bounded DFS solver — returns true if the puzzle can be solved within
-  // MAX_STATES visited states.  Fast enough for the 8-tube expert config.
-  function isSolvable(initState, tubeSize, numColors) {
-    const MAX_STATES = 80000;
+  // maxStates visited nodes.
+  function isSolvable(initState, tubeSize, numColors, maxStates = 80000) {
     const visited = new Set();
     const stack = [initState.map(t => [...t])];
     let checked = 0;
 
-    while (stack.length && checked < MAX_STATES) {
+    while (stack.length && checked < maxStates) {
       const state = stack.pop();
       checked++;
 
