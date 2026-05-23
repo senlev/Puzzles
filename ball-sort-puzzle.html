@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ball Sort Puzzle</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 50% 110%, rgba(120, 30, 10, 0.55) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 0%,   rgba(20, 60, 120, 0.4) 0%, transparent 60%),
+        linear-gradient(180deg, #0a0a1a 0%, #10102a 60%, #1a0808 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 24px 16px 32px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e8f4ff;
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    /* Starfield */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle, #fff 1px, transparent 1px),
+        radial-gradient(circle, #fff 1px, transparent 1px),
+        radial-gradient(circle, rgba(255,255,255,.6) 1px, transparent 1px),
+        radial-gradient(circle, rgba(255,255,255,.4) 1px, transparent 1px);
+      background-size: 400px 400px, 300px 300px, 500px 500px, 250px 250px;
+      background-position: 0 0, 150px 200px, 70px 320px, 330px 80px;
+      opacity: .25;
+    }
+
+    /* ── Header ── */
+    h1 {
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-shadow: 0 0 30px rgba(100, 210, 255, .6);
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    /* ── Stats bar ── */
+    .stats {
+      display: flex;
+      gap: 32px;
+      font-size: 1rem;
+      margin-bottom: 24px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 999px;
+      padding: 8px 28px;
+    }
+    .stats span strong { color: #7ef4ff; }
+
+    /* ── Game area ── */
+    .game-area {
+      display: flex;
+      gap: clamp(10px, 3vw, 24px);
+      align-items: flex-end;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ── Single tube column ── */
+    .tube-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      transition: transform .2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tube-wrap:hover .tube { border-color: rgba(150,230,255,.7); }
+
+    .tube-wrap.selected {
+      transform: translateY(-18px);
+      filter: drop-shadow(0 0 14px rgba(255,255,150,.7));
+    }
+
+    /* Rim */
+    .tube-rim {
+      width: clamp(58px, 9vw, 78px);
+      height: 16px;
+      background: linear-gradient(to bottom, #9af5ff 0%, #3abfd4 60%, #1a8fa0 100%);
+      border-radius: 8px 8px 0 0;
+      position: relative;
+      box-shadow: 0 -4px 12px rgba(0,200,230,.5);
+      z-index: 1;
+    }
+    .tube-wrap.selected .tube-rim {
+      background: linear-gradient(to bottom, #ffffa0 0%, #ddcc00 60%, #aa9900 100%);
+      box-shadow: 0 -4px 12px rgba(255,220,0,.6);
+    }
+
+    /* Glass tube body */
+    .tube {
+      width: clamp(58px, 9vw, 78px);
+      height: clamp(200px, 32vw, 280px);
+      position: relative;
+      display: flex;
+      flex-direction: column-reverse;
+      align-items: center;
+      padding: 4px 4px 8px;
+      background:
+        linear-gradient(to right,
+          rgba(255,255,255,.22) 0%,
+          rgba(255,255,255,.06) 18%,
+          rgba(255,255,255,.02) 50%,
+          rgba(255,255,255,.06) 82%,
+          rgba(255,255,255,.20) 100%
+        );
+      border: 1.5px solid rgba(100,220,255,.45);
+      border-top: none;
+      border-radius: 0 0 999px 999px;
+      box-shadow:
+        inset 2px 0 8px rgba(255,255,255,.08),
+        inset -2px 0 8px rgba(255,255,255,.05),
+        0 8px 24px rgba(0,0,0,.5);
+      overflow: hidden;
+    }
+    .tube-wrap.selected .tube {
+      border-color: rgba(255,240,80,.6);
+    }
+
+    /* Inner glass gloss overlay */
+    .tube::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 4px;
+      width: 30%;
+      height: 100%;
+      background: linear-gradient(to right, rgba(255,255,255,.12), transparent);
+      border-radius: 0 0 0 999px;
+      pointer-events: none;
+    }
+
+    /* ── Balls ── */
+    .ball {
+      width: clamp(46px, 7.5vw, 62px);
+      height: clamp(46px, 7.5vw, 62px);
+      border-radius: 50%;
+      flex-shrink: 0;
+      position: relative;
+      margin: 2px auto;
+      transition: transform .15s ease;
+    }
+    /* Highlight spot */
+    .ball::before {
+      content: '';
+      position: absolute;
+      top: 16%;
+      left: 22%;
+      width: 28%;
+      height: 20%;
+      background: rgba(255,255,255,.55);
+      border-radius: 50%;
+      transform: rotate(-30deg);
+    }
+    /* Bottom shadow */
+    .ball::after {
+      content: '';
+      position: absolute;
+      bottom: 8%;
+      left: 20%;
+      width: 60%;
+      height: 14%;
+      background: rgba(0,0,0,.25);
+      border-radius: 50%;
+    }
+
+    .ball.red {
+      background: radial-gradient(circle at 38% 38%, #ff8f8f 0%, #d42020 50%, #6b0000 100%);
+      box-shadow: 0 4px 18px rgba(200,30,30,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+    .ball.green {
+      background: radial-gradient(circle at 38% 38%, #8aff8a 0%, #22b54a 50%, #074d17 100%);
+      box-shadow: 0 4px 18px rgba(30,180,70,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+    .ball.blue {
+      background: radial-gradient(circle at 38% 38%, #80c8ff 0%, #2272d4 50%, #041e60 100%);
+      box-shadow: 0 4px 18px rgba(40,110,210,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+    .ball.orange {
+      background: radial-gradient(circle at 38% 38%, #ffe085 0%, #e07020 50%, #7a2a00 100%);
+      box-shadow: 0 4px 18px rgba(220,120,20,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+
+    /* Drop animation */
+    @keyframes drop {
+      0%   { transform: translateY(-30px); opacity: .5; }
+      60%  { transform: translateY(4px); }
+      80%  { transform: translateY(-3px); }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    .ball.just-placed { animation: drop .3s ease forwards; }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 26px;
+      font-size: .95rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform .15s, filter .15s, opacity .15s;
+      letter-spacing: .03em;
+    }
+    button:hover:not(:disabled) { transform: scale(1.07); filter: brightness(1.15); }
+    button:active:not(:disabled) { transform: scale(.97); }
+    button:disabled { opacity: .35; cursor: not-allowed; }
+
+    .btn-undo    { background: linear-gradient(135deg, #6c63ff, #a855f7); color: #fff; }
+    .btn-restart { background: linear-gradient(135deg, #f5576c, #e4338a); color: #fff; }
+    .btn-new     { background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      background: rgba(20,20,40,.95);
+      border: 1px solid rgba(100,220,255,.4);
+      color: #e8f4ff;
+      padding: 12px 28px;
+      border-radius: 999px;
+      font-size: 1rem;
+      font-weight: 600;
+      pointer-events: none;
+      transition: transform .35s cubic-bezier(.2,.8,.4,1.2), opacity .35s;
+      z-index: 200;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* ── Win overlay ── */
+    .win-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      backdrop-filter: blur(4px);
+    }
+    .win-overlay.show { display: flex; }
+
+    .win-card {
+      background: linear-gradient(145deg, #0d1232, #1a1040);
+      border: 1.5px solid rgba(100,220,255,.4);
+      border-radius: 24px;
+      padding: 44px 52px;
+      text-align: center;
+      box-shadow: 0 0 60px rgba(100,180,255,.25), 0 20px 60px rgba(0,0,0,.5);
+      animation: popIn .4s cubic-bezier(.2,.8,.4,1.2) both;
+    }
+    @keyframes popIn {
+      from { transform: scale(.6); opacity: 0; }
+      to   { transform: scale(1);  opacity: 1; }
+    }
+    .win-card .trophy { font-size: 3.5rem; display: block; margin-bottom: 12px; }
+    .win-card h2 {
+      font-size: 2rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #ffe44d, #3ddc84);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .win-card p { font-size: 1.1rem; margin-bottom: 24px; color: #c8deff; }
+    .win-card p strong { color: #7ef4ff; }
+
+    /* ── Difficulty selector ── */
+    .diff-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .diff-btn {
+      padding: 6px 18px;
+      font-size: .85rem;
+      font-weight: 700;
+      border: 1.5px solid rgba(255,255,255,.2);
+      border-radius: 999px;
+      background: rgba(255,255,255,.07);
+      color: #c8deff;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .diff-btn:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.4); }
+    .diff-btn.active {
+      background: linear-gradient(135deg, rgba(110,90,255,.5), rgba(40,160,220,.5));
+      border-color: rgba(120,210,255,.6);
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Can you solve this puzzle?</h1>
+
+<div class="diff-row" id="diff-row">
+  <button class="diff-btn active" data-diff="easy"   onclick="setDiff('easy')">Easy</button>
+  <button class="diff-btn"        data-diff="medium" onclick="setDiff('medium')">Medium</button>
+  <button class="diff-btn"        data-diff="hard"   onclick="setDiff('hard')">Hard</button>
+</div>
+
+<div class="stats">
+  <span>Moves: <strong id="move-count">0</strong></span>
+  <span>Best: <strong id="best-moves">—</strong></span>
+</div>
+
+<div class="game-area" id="game-area"></div>
+
+<div class="controls">
+  <button class="btn-undo"    id="btn-undo"    onclick="undo()">↩ Undo</button>
+  <button class="btn-restart"                  onclick="restart()">↺ Restart</button>
+  <button class="btn-new"                      onclick="newGame()">✦ New Game</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="win-overlay" id="win-overlay">
+  <div class="win-card">
+    <span class="trophy">🏆</span>
+    <h2>Puzzle Solved!</h2>
+    <p>Completed in <strong id="final-moves"></strong> moves!</p>
+    <button class="btn-restart" onclick="restart(); closeWin()">Play Again</button>
+  </div>
+</div>
+
+<script>
+  // ─── Config by difficulty ────────────────────────────────────────────────
+  const DIFFICULTIES = {
+    easy: {
+      colors: 4,
+      tubeSize: 4,
+      extraEmpty: 2,
+      shuffles: 60,
+      bestKey: 'bsp-best-easy',
+    },
+    medium: {
+      colors: 5,
+      tubeSize: 4,
+      extraEmpty: 2,
+      shuffles: 120,
+      bestKey: 'bsp-best-medium',
+    },
+    hard: {
+      colors: 6,
+      tubeSize: 5,
+      extraEmpty: 2,
+      shuffles: 200,
+      bestKey: 'bsp-best-hard',
+    },
+  };
+
+  const COLOR_LIST = ['red', 'green', 'blue', 'orange', 'purple', 'pink'];
+  // purple and pink need extra CSS (added dynamically)
+
+  const EXTRA_STYLES = `
+    .ball.purple {
+      background: radial-gradient(circle at 38% 38%, #d88aff 0%, #8b20d4 50%, #2e0060 100%);
+      box-shadow: 0 4px 18px rgba(140,40,210,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+    .ball.pink {
+      background: radial-gradient(circle at 38% 38%, #ffb3d9 0%, #e02090 50%, #6b0040 100%);
+      box-shadow: 0 4px 18px rgba(220,40,140,.65), inset 0 -4px 10px rgba(0,0,0,.3);
+    }
+  `;
+  const styleEl = document.createElement('style');
+  styleEl.textContent = EXTRA_STYLES;
+  document.head.appendChild(styleEl);
+
+  // ─── State ───────────────────────────────────────────────────────────────
+  let diff = 'easy';
+  let cfg = DIFFICULTIES[diff];
+  let tubes = [];
+  let initialTubes = [];
+  let selected = null;
+  let moves = 0;
+  let history = [];       // stack of [tubes snapshot, selected]
+  let justPlaced = null;  // tube index that just received a ball
+
+  // ─── Difficulty ──────────────────────────────────────────────────────────
+  function setDiff(d) {
+    diff = d;
+    cfg = DIFFICULTIES[d];
+    document.querySelectorAll('.diff-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.diff === d);
+    });
+    newGame();
+  }
+
+  // ─── Puzzle generation ───────────────────────────────────────────────────
+  function generatePuzzle() {
+    const { colors, tubeSize, extraEmpty, shuffles } = cfg;
+    // Build sorted state
+    const sorted = [];
+    for (let c = 0; c < colors; c++) {
+      sorted.push(Array(tubeSize).fill(COLOR_LIST[c]));
+    }
+    for (let e = 0; e < extraEmpty; e++) sorted.push([]);
+
+    // Shuffle by doing random valid reverse-moves
+    let state = sorted.map(t => [...t]);
+    let prevFrom = -1;
+    for (let i = 0; i < shuffles; i++) {
+      const moves = getAllMoves(state, tubeSize);
+      // Filter out immediately reversing the last move
+      const filtered = moves.filter(([f, t]) => !(f === prevFrom));
+      const candidates = filtered.length ? filtered : moves;
+      if (!candidates.length) break;
+      const [from, to] = candidates[Math.floor(Math.random() * candidates.length)];
+      state[to].push(state[from].pop());
+      prevFrom = to;
+    }
+
+    // Ensure puzzle isn't trivially solved
+    if (isSolved(state, tubeSize, colors)) return generatePuzzle();
+
+    return state;
+  }
+
+  function getAllMoves(state, tubeSize) {
+    const moves = [];
+    for (let f = 0; f < state.length; f++) {
+      if (!state[f].length) continue;
+      const topColor = state[f][state[f].length - 1];
+      for (let t = 0; t < state.length; t++) {
+        if (f === t) continue;
+        if (state[t].length >= tubeSize) continue;
+        const destTop = state[t].length ? state[t][state[t].length - 1] : null;
+        if (destTop === null || destTop === topColor) {
+          moves.push([f, t]);
+        }
+      }
+    }
+    return moves;
+  }
+
+  function isSolved(state, tubeSize, numColors) {
+    let sortedFull = 0;
+    for (const tube of state) {
+      if (tube.length === 0) continue;
+      if (tube.length === tubeSize && tube.every(b => b === tube[0])) sortedFull++;
+    }
+    return sortedFull === numColors;
+  }
+
+  // ─── Game lifecycle ───────────────────────────────────────────────────────
+  function newGame() {
+    tubes = generatePuzzle();
+    initialTubes = tubes.map(t => [...t]);
+    selected = null;
+    moves = 0;
+    history = [];
+    justPlaced = null;
+    render();
+    updateStats();
+  }
+
+  function restart() {
+    tubes = initialTubes.map(t => [...t]);
+    selected = null;
+    moves = 0;
+    history = [];
+    justPlaced = null;
+    render();
+    updateStats();
+  }
+
+  function closeWin() {
+    document.getElementById('win-overlay').classList.remove('show');
+  }
+
+  // ─── Game logic ───────────────────────────────────────────────────────────
+  function topOf(idx) {
+    return tubes[idx].length ? tubes[idx][tubes[idx].length - 1] : null;
+  }
+
+  function canMove(from, to) {
+    if (from === to) return false;
+    if (!tubes[from].length) return false;
+    if (tubes[to].length >= cfg.tubeSize) return false;
+    const dest = topOf(to);
+    return dest === null || dest === topOf(from);
+  }
+
+  function doMove(from, to) {
+    history.push({ tubes: tubes.map(t => [...t]), selected, moves });
+    const color = topOf(from);
+    while (topOf(from) === color && tubes[to].length < cfg.tubeSize) {
+      tubes[to].push(tubes[from].pop());
+    }
+    moves++;
+    justPlaced = to;
+    selected = null;
+  }
+
+  function clickTube(idx) {
+    if (isSolved(tubes, cfg.tubeSize, cfg.colors)) return;
+
+    if (selected === null) {
+      if (!tubes[idx].length) return;
+      // Don't allow selecting a tube that's already fully sorted
+      const tube = tubes[idx];
+      if (tube.length === cfg.tubeSize && tube.every(b => b === tube[0])) {
+        showToast('Already sorted!');
+        return;
+      }
+      selected = idx;
+      render();
+      return;
+    }
+
+    if (selected === idx) {
+      selected = null;
+      render();
+      return;
+    }
+
+    if (canMove(selected, idx)) {
+      doMove(selected, idx);
+      render();
+      updateStats();
+      if (isSolved(tubes, cfg.tubeSize, cfg.colors)) {
+        setTimeout(showWin, 450);
+      }
+    } else {
+      // Try re-selecting
+      if (tubes[idx].length) {
+        const tube = tubes[idx];
+        if (tube.length === cfg.tubeSize && tube.every(b => b === tube[0])) {
+          showToast('Already sorted!');
+          selected = null;
+        } else {
+          selected = idx;
+        }
+      } else {
+        // Can't move here (full)
+        if (tubes[idx].length >= cfg.tubeSize) {
+          showToast('Tube is full!');
+        }
+        selected = null;
+      }
+      render();
+    }
+  }
+
+  function undo() {
+    if (!history.length) return;
+    const snap = history.pop();
+    tubes = snap.tubes;
+    selected = snap.selected;
+    moves = snap.moves;
+    justPlaced = null;
+    render();
+    updateStats();
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+  function render() {
+    const area = document.getElementById('game-area');
+    area.innerHTML = '';
+
+    tubes.forEach((tube, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'tube-wrap' + (selected === idx ? ' selected' : '');
+      wrap.onclick = () => clickTube(idx);
+
+      const rim = document.createElement('div');
+      rim.className = 'tube-rim';
+
+      const body = document.createElement('div');
+      body.className = 'tube';
+
+      tube.forEach((color, ballIdx) => {
+        const ball = document.createElement('div');
+        const isNew = justPlaced === idx && ballIdx >= tube.length - countTopSame(tube);
+        ball.className = 'ball ' + color + (isNew ? ' just-placed' : '');
+        body.appendChild(ball);
+      });
+
+      wrap.appendChild(rim);
+      wrap.appendChild(body);
+      area.appendChild(wrap);
+    });
+
+    document.getElementById('btn-undo').disabled = !history.length;
+    justPlaced = null;
+  }
+
+  function countTopSame(tube) {
+    if (!tube.length) return 0;
+    const top = tube[tube.length - 1];
+    let count = 0;
+    for (let i = tube.length - 1; i >= 0 && tube[i] === top; i--) count++;
+    return count;
+  }
+
+  // ─── Stats ────────────────────────────────────────────────────────────────
+  function updateStats() {
+    document.getElementById('move-count').textContent = moves;
+    const best = localStorage.getItem(cfg.bestKey);
+    document.getElementById('best-moves').textContent = best ?? '—';
+  }
+
+  function showWin() {
+    const best = localStorage.getItem(cfg.bestKey);
+    if (!best || moves < parseInt(best)) {
+      localStorage.setItem(cfg.bestKey, moves);
+    }
+    document.getElementById('final-moves').textContent = moves;
+    document.getElementById('win-overlay').classList.add('show');
+    updateStats();
+  }
+
+  // ─── Toast ────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+  }
+
+  // ─── Keyboard support ─────────────────────────────────────────────────────
+  document.addEventListener('keydown', e => {
+    if (e.key === 'z' || e.key === 'Z') undo();
+    if (e.key === 'r' || e.key === 'R') restart();
+    if (e.key === 'Escape') { selected = null; render(); }
+    const n = parseInt(e.key);
+    if (n >= 1 && n <= tubes.length) clickTube(n - 1);
+  });
+
+  // ─── Boot ─────────────────────────────────────────────────────────────────
+  newGame();
+</script>
+</body>
+</html>
